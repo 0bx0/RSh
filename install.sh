@@ -63,13 +63,13 @@ if command -v rsh &>/dev/null; then
     ok "Installation complete!"
     echo ""
     echo -e "  ${BOLD}Run the shell:${NC}"
-    echo -e "    ${CYAN}rsh${NC}"
+    echo -e "    ${CYAN}rsh${NC} (run ${BOLD}hash -r${NC} if your terminal doesn't recognize it yet)"
     echo ""
     echo -e "  ${BOLD}With a workspace:${NC}"
     echo -e "    ${CYAN}rsh -w ~/your_ros2_ws${NC}"
     echo ""
     echo -e "  ${BOLD}Uninstall:${NC}"
-    echo -e "    ${CYAN}pip uninstall rsh${NC}"
+    echo -e "    ${CYAN}./uninstall.sh${NC} (or pip uninstall rsh)"
     echo ""
 else
     RSH_PATH=$("$PYTHON" -c "import shutil; print(shutil.which('rsh') or '')" 2>/dev/null || true)

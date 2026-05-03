@@ -29,6 +29,7 @@ info "Using $PYTHON"
 info "Uninstalling RSh..."
 if "$PYTHON" -m pip uninstall -y rsh; then
     ok "RSh has been successfully uninstalled."
+    info "Note: You may need to run 'hash -r' to clear your terminal cache if you see 'No such file or directory' when typing rsh."
     
     # Optional cleanup of config and history
     if [ -d "$HOME/.config/rsh" ] || [ -f "$HOME/.rsh_history" ]; then
