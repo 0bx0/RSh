@@ -3,6 +3,8 @@
 An interactive REPL that eliminates `build → source → run` friction for ROS2 workspaces.
 
 > **Note:** RSh uses [Nerd Font](https://www.nerdfonts.com/) glyphs in the prompt and status bar. Install a Nerd Font patched terminal font for the best experience.
+<br>
+
 > **Note:** RSh is in it's development phase and still has a lot of work and testing. If you're using this make sure it's for personal use because things can and will break! Report any bugs you find and I'll try and fix them! This project's architecture and systems design was made by me, but the internal code is completely vibe coded. This makes the project prone to bugs!
 ## Features
 
@@ -28,6 +30,8 @@ chmod +x install.sh
 Or manually:
 
 ```bash
+git clone https://github.com/zerobx0/RosSh.git
+cd RosSh
 pip install .
 ```
 
