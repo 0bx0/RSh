@@ -45,9 +45,6 @@ def colcon_build(package: str, workspace_root: Path | str, *, symlink_install: b
     result = subprocess.run(cmd, cwd=str(ws), timeout=timeout, stderr=subprocess.PIPE)
     if result.returncode != 0:
         stderr_text = result.stderr.decode(errors='replace')[-2000:]
-        if 'was not found' in stderr_text and '--packages-up-to' in cmd:
-            log.warning("Package '%s' not found in src, assuming binary installation.", package)
-            return result
         raise BuildError(f"colcon build failed for '{package}' (rc={result.returncode})", stderr=stderr_text, returncode=result.returncode)
     log.info("Build succeeded for '%s'", package)
     return result

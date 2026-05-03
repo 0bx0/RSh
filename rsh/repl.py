@@ -24,8 +24,8 @@ _NF_EXIT = '\uf52b'
 _NF_SHELL = '\ue795'
 _NF_SRCH = '\uf422'
 RSH_STYLE = Style.from_dict({'prompt.path': 'ansibrightblue', 'prompt.arrow': 'ansicyan bold', 'prompt.name': 'ansimagenta bold', 'toolbar': 'bg:#1e1e2e #cdd6f4', 'toolbar.key': '#89b4fa bold', 'toolbar.sep': '#45475a', 'toolbar.val': '#a6e3a1', 'error': 'ansired bold'})
-COMMANDS: Dict[str, str] = {'run': f'{_NF_NODE} Build + run a node          (run <pkg> <exec> [args...])', 'launch': f'{_NF_NODE} Build + launch              (launch <pkg> <file> [args...])', 'build': f'{_NF_GEAR} Build a package             (build <pkg>)', 'create': f'{_NF_PKG} Create a ROS2 package       (create <pkg_name>)', 'source': f'{_NF_SHELL} Source a workspace          (source <path>)', 'ls': f'{_NF_DIR} List directory contents      (ls [path])', 'cd': f'{_NF_DIR} Change directory             (cd <path>)', 'pkgs': f'{_NF_PKG} List packages                (pkgs [--src|--system|--user])', 'topics': f'{_NF_TOPIC} List active topics', 'nodes': f'{_NF_NODE} List active nodes', 'hz': f'{_NF_TOPIC} Show topic frequency        (hz <topic>)', 'echo': f'{_NF_TOPIC} Echo topic messages         (echo <topic>)', 'info': f'{_NF_SRCH} Show topic/node info        (info <topic|node>)', 'services': f'{_NF_GEAR} List active services', 'params': f'{_NF_GEAR} List parameters             (params [node])', 'search': f'{_NF_SRCH} Search pkgs/nodes/topics    (search <query>)', 'clean': f'{_NF_GEAR} Remove build artifacts      (clean [pkg] or clean --all)', 'help': f'{_NF_SHELL} Show available commands', 'exit': f'{_NF_EXIT} Exit RSh'}
-_PKG_COMMANDS = {'run', 'build', 'launch', 'clean'}
+COMMANDS: Dict[str, str] = {'run': f'{_NF_NODE} Build + run a node          (run <pkg> <exec> [args...])', 'launch': f'{_NF_NODE} Build + launch              (launch <pkg> <file> [args...])', 'build': f'{_NF_GEAR} Build a package             (build <pkg>)', 'unbuild': f'{_NF_GEAR} Delete package build        (unbuild <pkg>)', 'create': f'{_NF_PKG} Create a ROS2 package       (create <pkg_name>)', 'source': f'{_NF_SHELL} Source a workspace          (source <path>)', 'ls': f'{_NF_DIR} List directory contents      (ls [path])', 'cd': f'{_NF_DIR} Change directory             (cd <path>)', 'pkgs': f'{_NF_PKG} List packages                (pkgs [--src|--system|--user])', 'topics': f'{_NF_TOPIC} List active topics', 'nodes': f'{_NF_NODE} List active nodes', 'hz': f'{_NF_TOPIC} Show topic frequency        (hz <topic>)', 'echo': f'{_NF_TOPIC} Echo topic messages         (echo <topic>)', 'info': f'{_NF_SRCH} Show topic/node info        (info <topic|node>)', 'services': f'{_NF_GEAR} List active services', 'params': f'{_NF_GEAR} List parameters             (params [node])', 'search': f'{_NF_SRCH} Search pkgs/nodes/topics    (search <query>)', 'clean': f'{_NF_GEAR} Remove build artifacts      (clean [pkg] or clean --all)', 'help': f'{_NF_SHELL} Show available commands', 'exit': f'{_NF_EXIT} Exit RSh'}
+_PKG_COMMANDS = {'run', 'build', 'launch', 'clean', 'unbuild'}
 
 class _ExecutableCache:
 
@@ -208,6 +208,14 @@ def _auto_index_workspace(directory: Path, state: ReplState) -> int:
         return count
     return 0
 
+from prompt_toolkit import prompt
+
+def _ask_confirmation(message: str) -> bool:
+    try:
+        ans = prompt(HTML(f"  <ansicyan>[?]</ansicyan> {message} [y/N] "))
+        return ans.strip().lower() in ('y', 'yes')
+    except (KeyboardInterrupt, EOFError):
+        return False
 def _find_workspace_root(start_dir: Path) -> Optional[Path]:
     curr = start_dir.resolve()
     for _ in range(5):
@@ -239,18 +247,31 @@ def _handle_run(args, state: ReplState):
         extra_args = remaining
     ws = _try_resolve_with_fallback(pkg, state)
     origin = state.index.get_origin(pkg)
+    active_ws = state.active_workspace or _find_workspace_root(Path.cwd())
     if ws is None or origin == 'system':
-        msg = f"[96m[INFO][0m  Running system package '{pkg}'." if origin == 'system' else f"[93m[WARN][0m  Package '{pkg}' not in index. Running without build."
+        msg = f" [96m[INFO][0m  Running system package '{pkg}'." if origin == 'system' else f" [93m[WARN][0m  Package '{pkg}' not in index. Running without build."
         print(msg)
         run_node(pkg, exe, ros_args=ros_args or None, extra_args=extra_args or None)
         return
+        
+    if active_ws and ws != active_ws:
+        print(f" [93m[WARN][0m  Package '{pkg}' belongs to a different workspace: {ws}")
+        if not _ask_confirmation(f"Build '{pkg}' in ({ws}) before running?"):
+            if _ask_confirmation(f"Skip build and run existing binary?"):
+                run_node(pkg, exe, ros_args=ros_args or None, extra_args=extra_args or None)
+            return
+
     try:
         rc = build_and_run(pkg, exe, ws, ros_args=ros_args or None, extra_args=extra_args or None)
         state.exe_cache.invalidate(pkg)
         if rc != 0:
-            print(f'[93m[WARN][0m  Node exited with code {rc}')
+            print(f' [93m[WARN][0m  Node exited with code {rc}')
     except BuildError as e:
-        _print_build_error(e)
+        if e.stderr and 'was not found' in e.stderr:
+            print(f" [93m[WARN][0m  Source for '{pkg}' not found in {ws}. Running existing binary.")
+            run_node(pkg, exe, ros_args=ros_args or None, extra_args=extra_args or None)
+        else:
+            _print_build_error(e)
     except EnvironmentExtractionError as e:
         print(f'[91m[ERR][0m  Environment error: {e}')
     except FileNotFoundError as e:
@@ -264,18 +285,31 @@ def _handle_launch(args, state: ReplState):
     la = args[2:] or None
     ws = _try_resolve_with_fallback(pkg, state)
     origin = state.index.get_origin(pkg)
+    active_ws = state.active_workspace or _find_workspace_root(Path.cwd())
     if ws is None or origin == 'system':
-        msg = f"[96m[INFO][0m  Launching system package '{pkg}'." if origin == 'system' else f"[93m[WARN][0m  Package '{pkg}' not in index. Launching without build."
+        msg = f" [96m[INFO][0m  Running system package '{pkg}'." if origin == 'system' else f" [93m[WARN][0m  Package '{pkg}' not in index. Running without build."
         print(msg)
-        launch_node(pkg, lf, launch_args=la)
+        run_node(pkg, exe, ros_args=ros_args or None, extra_args=extra_args or None)
         return
+        
+    if active_ws and ws != active_ws:
+        print(f" [93m[WARN][0m  Package '{pkg}' belongs to a different workspace: {ws}")
+        if not _ask_confirmation(f"Build '{pkg}' in ({ws}) before running?"):
+            if _ask_confirmation(f"Skip build and run existing binary?"):
+                run_node(pkg, exe, ros_args=ros_args or None, extra_args=extra_args or None)
+            return
+
     try:
-        rc = build_and_launch(pkg, lf, ws, launch_args=la)
-        state.launch_cache.invalidate(pkg)
+        rc = build_and_run(pkg, exe, ws, ros_args=ros_args or None, extra_args=extra_args or None)
+        state.exe_cache.invalidate(pkg)
         if rc != 0:
-            print(f'[93m[WARN][0m  Launch exited with code {rc}')
+            print(f' [93m[WARN][0m  Node exited with code {rc}')
     except BuildError as e:
-        _print_build_error(e)
+        if e.stderr and 'was not found' in e.stderr:
+            print(f" [93m[WARN][0m  Source for '{pkg}' not found in {ws}. Running existing binary.")
+            run_node(pkg, exe, ros_args=ros_args or None, extra_args=extra_args or None)
+        else:
+            _print_build_error(e)
     except EnvironmentExtractionError as e:
         print(f'[91m[ERR][0m  Environment error: {e}')
     except FileNotFoundError as e:
@@ -317,25 +351,62 @@ def _handle_create(args, state: ReplState):
     except BuildError as e:
         _print_build_error(e)
 
+def _handle_unbuild(args, state: ReplState):
+    if not args:
+        print("Usage: unbuild <package_name>")
+        return
+    pkg = args[0]
+    ws = state.active_workspace or _find_workspace_root(Path.cwd())
+    if not ws:
+        print(" \033[91m[ERR]\033[0m  Cannot unbuild: No active workspace found.")
+        return
+        
+    build_dir = ws / 'build' / pkg
+    install_dir = ws / 'install' / pkg
+    if not build_dir.exists() and not install_dir.exists():
+        print(f" \033[93m[WARN]\033[0m  Build artifacts for '{pkg}' not found in {ws}.")
+        return
+        
+    if _ask_confirmation(f"Permanently delete build/install artifacts for '{pkg}' in {ws}?"):
+        import shutil
+        if build_dir.exists():
+            shutil.rmtree(build_dir, ignore_errors=True)
+        if install_dir.exists():
+            shutil.rmtree(install_dir, ignore_errors=True)
+        print(f" \033[92m[OK]\033[0m  Deleted build artifacts for '{pkg}'.")
+        state.exe_cache.invalidate(pkg)
+        state.launch_cache.invalidate(pkg)
+        state.index.index_workspace(ws)
+    else:
+        print("  Unbuild aborted.")
+
 def _handle_build(args, state: ReplState):
     ws = None
     pkg = None
     extra = None
+    active_ws = state.active_workspace or _find_workspace_root(Path.cwd())
+    
     if not args:
-        ws = state.active_workspace or _find_workspace_root(Path.cwd())
+        ws = active_ws
         if not ws:
-            print(f"[91m[ERR][0m  Cannot find workspace root. Please 'cd' into a workspace or pass a package name.")
+            print(f" [91m[ERR][0m  Cannot find workspace root. Please 'cd' into a workspace or pass a package name.")
             return
     else:
         pkg = args[0]
         extra = args[1:] or None
         ws = _try_resolve_with_fallback(pkg, state)
         if ws is None:
-            ws = _find_workspace_root(Path.cwd())
+            ws = active_ws
             if not ws:
-                print(f"[91m[ERR][0m  Package '{pkg}' not found in index, and not in a workspace.")
+                print(f" [91m[ERR][0m  Package '{pkg}' not found in index, and not in a workspace.")
                 return
-            print(f'  [96m[INFO][0m Package not in index, but running build from fallback root: {ws}')
+            print(f'   [96m[INFO][0m  Package not in index, but running build from fallback root: {ws}')
+        else:
+            if active_ws and ws != active_ws:
+                print(f" [93m[WARN][0m  Package '{pkg}' belongs to a different workspace: {ws}")
+                if not _ask_confirmation(f"Build '{pkg}' in its home workspace ({ws})?"):
+                    print(" [91m[ERR][0m  Build aborted.")
+                    return
     try:
         if pkg:
             colcon_build(pkg, ws, extra_args=extra)
@@ -358,7 +429,10 @@ def _handle_build(args, state: ReplState):
             except (FileNotFoundError, EnvironmentExtractionError) as e:
                 print(f"[93m[WARN][0m  Built all packages in '{ws}', but re-source failed: {e}")
     except BuildError as e:
-        _print_build_error(e)
+        if pkg and e.stderr and 'was not found' in e.stderr:
+            print(f" \033[93m[WARN]\033[0m  Package '{pkg}' source not found in {ws}. Build skipped (assumed binary installation).")
+        else:
+            _print_build_error(e)
 
 def _handle_source(args, state: ReplState):
     if not args:
@@ -655,6 +729,8 @@ def main(*, workspace: Optional[str]=None, log_level: str='WARNING'):
             _handle_launch(args, state)
         elif cmd == 'create':
             _handle_create(args, state)
+        elif cmd == 'unbuild':
+            _handle_unbuild(args, state)
         elif cmd == 'build':
             _handle_build(args, state)
         elif cmd == 'source':
