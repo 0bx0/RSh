@@ -1,11 +1,9 @@
-# RSh - ROS2 Shell
+# RSh - ROS2 Shell (TESTING)
 
 An interactive REPL that eliminates `build → source → run` friction for ROS2 workspaces.
 
-Stop typing `colcon build && source install/setup.bash && ros2 run ...` - just type `run my_pkg my_node`.
-
 > **Note:** RSh uses [Nerd Font](https://www.nerdfonts.com/) glyphs in the prompt and status bar. Install a Nerd Font patched terminal font for the best experience.
-
+> **Note:** RSh is in it's development phase and still has a lot of work and testing. If you're using this make sure it's for personal use because things can and will break! Report any bugs you find and I'll try and fix them! This project's architecture and systems design was made by me, but the internal code is completely vibe coded. This makes the project prone to bugs!
 ## Features
 
 - **One-command workflow** - `run pkg node` builds, sources, and runs automatically
